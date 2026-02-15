@@ -1,4 +1,4 @@
-# 🪙 Coin History - Explained Like You're 5!
+# 🪙 Coin History
 
 ## What Is This?
 
