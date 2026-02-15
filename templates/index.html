@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Know Your Coin History</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+<style>
+/* ───── Reset & Theme ───── */
+:root {
+  --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #a371f7;
+  --orange: #f0883e; --cyan: #56d4dd;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+       background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ───── Top bar ───── */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border);
+          padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+.topbar h1 { font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+.topbar .status { font-size: .8rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+
+/* ───── Layout ───── */
+.container { max-width: 1400px; margin: 0 auto; padding: 16px 24px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ───── Card ───── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 16px; overflow: hidden; }
+.card h2 { font-size: .9rem; text-transform: uppercase; letter-spacing: .05em;
+           color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
+/* ───── Form elements ───── */
+label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 3px; margin-top: 8px; }
+input, select, textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-size: .85rem; outline: none; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+.row { display: flex; gap: 8px; align-items: flex-end; }
+.row > * { flex: 1; }
+
+button {
+  padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--text); font-size: .84rem; cursor: pointer;
+  transition: all .15s; white-space: nowrap; }
+button:hover { background: var(--border); }
+.btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { opacity: .85; }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: .76rem; }
+
+/* ───── Graph ───── */
+#graph-container { width: 100%; height: 450px; background: var(--bg); border: 1px solid var(--border);
+                   border-radius: 8px; position: relative; overflow-x: auto; }
+#graph-container canvas { min-width: 1200px; }
+#graph-container.empty::after { content: 'Enter a TXID above and click Trace to see the transaction graph';
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: var(--muted); font-size: .9rem; pointer-events: none; text-align: center; }
+
+/* ───── Badges ───── */
+.badge { display: inline-block; font-size: .7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.badge-P2PKH   { background: #462c00; color: var(--yellow); }
+.badge-P2SH    { background: #2d1d00; color: var(--orange); }
+.badge-P2WPKH  { background: #0c2d6b; color: var(--accent); }
+.badge-P2WSH   { background: #1a1040; color: var(--purple); }
+.badge-P2TR    { background: #0b3a1a; color: var(--green); }
+.badge-coinbase{ background: #3a0b0b; color: var(--red); }
+
+/* ───── Items ───── */
+.item { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+        padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: border-color .15s; }
+.item:hover { border-color: var(--accent); }
+.item .mono { font-family: 'SF Mono', Menlo, monospace; font-size: .74rem; color: var(--muted);
+              word-break: break-all; margin-top: 2px; }
+.item .val { font-weight: 600; }
+.item .lbl { color: var(--green); font-size: .78rem; }
+
+.kv { display: flex; justify-content: space-between; padding: 4px 0; font-size: .82rem;
+      border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: none; }
+.kv .k { color: var(--muted); min-width: 100px; }
+.kv .v { font-family: 'SF Mono', Menlo, monospace; word-break: break-all; text-align: right; max-width: 65%; }
+
+.hint { font-size: .76rem; color: var(--muted); padding: 4px 0 4px 10px;
+        border-left: 2px solid var(--accent); margin: 4px 0; }
+
+/* ───── Labels list ───── */
+.label-row { display: flex; justify-content: space-between; align-items: center;
+             padding: 5px 0; border-bottom: 1px solid var(--border); font-size: .8rem; }
+.label-row:last-child { border-bottom: none; }
+.label-row .ref { font-family: monospace; font-size: .72rem; color: var(--muted);
+                  max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label-row .ltext { color: var(--green); flex: 1; text-align: right; margin: 0 8px; }
+
+/* ───── Scrollable ───── */
+.scroll-list { max-height: 350px; overflow-y: auto; }
+.scroll-list::-webkit-scrollbar { width: 6px; }
+.scroll-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ───── Modal ───── */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex;
+            align-items: center; justify-content: center; z-index: 200; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+         padding: 24px; width: 440px; max-width: 92vw; }
+.modal h3 { font-size: 1rem; margin-bottom: 12px; }
+.modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ───── Toast ───── */
+#toast { position: fixed; bottom: 24px; right: 24px; padding: 10px 20px; border-radius: 8px;
+         background: var(--accent); color: #000; font-size: .84rem; font-weight: 600;
+         opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 300; }
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ══════════ TOP BAR ══════════ -->
+<div class="topbar">
+  <h1>&#8383; Know Your Coin History</h1>
+  <div class="status">
+    <span id="status-text">Ready</span> &nbsp;|&nbsp;
+    <span id="node-count">0 nodes</span> &nbsp;|&nbsp;
+    Wallet:
+    <select id="wallet-select" style="width:auto;display:inline;padding:2px 6px;font-size:.78rem;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+      <option>student</option>
+    </select>
+    <button class="btn-sm" onclick="loadWallets()">&#8635;</button>
+    <button class="btn-sm" onclick="switchWallet()">Switch</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ══════════ GRAPH SECTION ══════════ -->
+  <div class="card" style="margin-bottom:16px">
+    <h2>&#128269; Transaction Graph</h2>
+    <div class="row" style="margin-bottom:10px">
+      <div style="flex:3">
+        <label>Transaction ID (paste a txid)</label>
+        <input id="txid-input" type="text" placeholder="e.g. 79c16904fd32d80d95c2e20e7848a001fb57691bf1d5a5384784c8cf9ca8f58a" style="font-family:monospace;font-size:.8rem">
+      </div>
+      <div style="flex:0 0 80px">
+        <label>Depth</label>
+        <input id="depth-input" type="number" value="3" min="1" max="20">
+      </div>
+      <div style="flex:0 0 auto; display:flex; gap:6px; align-items:flex-end">
+        <button class="btn-primary" onclick="doTrace()">&#9654; Trace</button>
+        <button class="btn-danger" onclick="clearGraph()">Clear</button>
+      </div>
+    </div>
+    <div id="graph-container" class="empty"></div>
+    <div style="margin-top:8px;font-size:.76rem;color:var(--muted)">
+      &#9432; <b>Click</b> a node = see details below &nbsp;|&nbsp; <b>Double-click</b> = expand history &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Drag to pan
+    </div>
+  </div>
+
+  <!-- ══════════ DETAILS + FINGERPRINTS ══════════ -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>&#128196; Transaction Details</h2>
+      <div id="detail-panel" class="scroll-list">
+        <div style="color:var(--muted);text-align:center;padding:40px 0;font-size:.88rem">
+          &#9757; Click a node in the graph above to inspect its inputs, outputs, fees, and more
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>&#128270; Wallet Fingerprints</h2>
+      <div id="fingerprint-panel" class="scroll-list">
+        <div style="color:var(--muted);text-align:center;padding:40px 0;font-size:.88rem">
+          &#128373; Fingerprint heuristics (locktime, version, nSequence, output types) appear here after selecting a transaction
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ UTXOs + LABELS ══════════ -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>&#128176; Wallet UTXOs (Your Coins)</h2>
+      <div style="margin-bottom:10px">
+        <button onclick="loadUTXOs()" class="btn-primary" style="width:100%">&#128260; Load / Refresh UTXOs</button>
+      </div>
+      <div id="utxo-list" class="scroll-list">
+        <div style="color:var(--muted);text-align:center;padding:30px 0;font-size:.85rem">
+          &#128073; Click the button above to load your wallet coins.<br>Then click any UTXO to trace its history.
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>&#127991; Labels (BIP-329)</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button onclick="openNewLabelModal()" class="btn-primary">+ Add Label</button>
+        <button onclick="exportLabels()">&#128229; Export</button>
+        <input type="file" id="import-file" accept=".jsonl,.json,.txt" style="display:none" onchange="importLabels(this)">
+        <button onclick="document.getElementById('import-file').click()">&#128228; Import</button>
+      </div>
+      <div id="labels-list" class="scroll-list">
+        <div style="color:var(--muted);text-align:center;padding:30px 0;font-size:.85rem">
+          No labels yet.<br>Add labels to transactions and outputs to track coin provenance.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ BALANCE ══════════ -->
+  <div class="card" style="margin-bottom:24px">
+    <h2>&#9989; Wallet Balance</h2>
+    <div id="balance-panel" style="font-size:.9rem;color:var(--muted)">Loading...</div>
+  </div>
+
+</div>
+
+<!-- ══════════ LABEL MODAL ══════════ -->
+<div id="label-modal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeLabelModal()">
+  <div class="modal">
+    <h3 id="modal-title">&#127991; Add / Edit Label (BIP-329)</h3>
+    <label>Type</label>
+    <select id="lbl-type" onchange="toggleSpendableField()">
+      <option value="tx">tx (transaction)</option>
+      <option value="output">output (txid:vout)</option>
+      <option value="addr">addr (address)</option>
+      <option value="input">input</option>
+      <option value="pubkey">pubkey</option>
+      <option value="xpub">xpub</option>
+    </select>
+    <label>Reference</label>
+    <input id="lbl-ref" type="text" placeholder="txid, txid:vout, or address" style="font-family:monospace">
+    <div id="ref-hint" style="font-size:.72rem;color:var(--muted);margin-top:2px;display:none">Reference cannot be changed. Delete and create new if needed.</div>
+    <label>Label text</label>
+    <input id="lbl-text" type="text" placeholder="e.g. Payment from Alice, Mining reward, etc.">
+    <label>Origin (optional, key derivation path)</label>
+    <input id="lbl-origin" type="text" placeholder="e.g. wpkh([d34db33f/84'/0'/0'])">
+    <div id="spendable-field" style="display:none;margin-top:8px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="lbl-spendable" checked style="width:auto">
+        <span>Spendable (uncheck to freeze this output)</span>
+      </label>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:4px">
+        ❄️ Frozen outputs won't be selected when spending. Use this to preserve privacy by not mixing coin histories.
+      </div>
+    </div>
+    <div class="actions">
+      <button onclick="closeLabelModal()">Cancel</button>
+      <button id="save-btn" class="btn-primary" onclick="saveLabel()">Save Label</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function toast(msg, ms=2500) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), ms);
+}
+function setStatus(msg) { document.getElementById('status-text').textContent = msg; }
+function updateNodeCount() { document.getElementById('node-count').textContent = nodesDS.length + ' nodes'; }
+async function api(url, opts={}) {
+  try { const r = await fetch(url, opts); return r.json(); }
+  catch(e) { return {error: e.message}; }
+}
+function badge(stype) { return '<span class="badge badge-'+(stype||'')+'">'+esc(stype||'?')+'</span>'; }
+function kv(k,v) { return '<div class="kv"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'; }
+function shortTx(txid) { return txid ? txid.slice(0,10)+'...'+txid.slice(-6) : ''; }
+
+// ═══════════════════════════════════════════
+//  vis.js Network
+// ═══════════════════════════════════════════
+const GROUP_COLORS = {
+  'depth-0': {background:'#1f6feb',border:'#388bfd',font:{color:'#fff'}},
+  'depth-1': {background:'#8957e5',border:'#a371f7',font:{color:'#fff'}},
+  'depth-2': {background:'#6e40aa',border:'#a371f7',font:{color:'#fff'}},
+  'depth-3': {background:'#553098',border:'#7c3aed',font:{color:'#fff'}},
+  'depth-4': {background:'#3c1e78',border:'#6d28d9',font:{color:'#fff'}},
+  'depth-5': {background:'#291456',border:'#5b21b6',font:{color:'#ddd'}},
+  'P2PKH':   {background:'#462c00',border:'#d29922',font:{color:'#d29922'},shape:'box'},
+  'P2SH':    {background:'#2d1d00',border:'#f0883e',font:{color:'#f0883e'},shape:'box'},
+  'P2WPKH':  {background:'#0c2d6b',border:'#58a6ff',font:{color:'#58a6ff'},shape:'box'},
+  'P2WSH':   {background:'#1a1040',border:'#bc8cff',font:{color:'#bc8cff'},shape:'box'},
+  'P2TR':    {background:'#0b3a1a',border:'#3fb950',font:{color:'#3fb950'},shape:'box'},
+  'coinbase':{background:'#3a0b0b',border:'#f85149',font:{color:'#f85149'},shape:'diamond'},
+};
+
+let nodesDS, edgesDS, network;
+
+function initNetwork() {
+  if (typeof vis === 'undefined') {
+    document.getElementById('graph-container').innerHTML =
+      '<div style="color:var(--red);padding:40px;text-align:center">vis-network library failed to load.<br>Check your internet connection and refresh.</div>';
+    return;
+  }
+  nodesDS = new vis.DataSet();
+  edgesDS = new vis.DataSet();
+  const container = document.getElementById('graph-container');
+  network = new vis.Network(container, {nodes: nodesDS, edges: edgesDS}, {
+    layout: { 
+      hierarchical: { 
+        enabled: true, 
+        direction: 'LR',          // Horizontal: Left → Right
+        sortMethod: 'directed', 
+        levelSeparation: 250,     // More horizontal space between levels
+        nodeSpacing: 50,          // Vertical space between nodes at same level
+        treeSpacing: 100
+      } 
+    },
+    physics: false,
+    nodes: { shape:'dot', size:16, font:{size:10, color:'#e6edf3', multi:true}, borderWidth:2 },
+    edges: { color:{color:'#58a6ff',highlight:'#79c0ff'}, font:{size:8,color:'#8b949e',strokeWidth:0}, smooth:{type:'cubicBezier'}, width:2, arrows:{to:{scaleFactor:0.7}} },
+    groups: GROUP_COLORS,
+    interaction: { hover:true, tooltipDelay:150 },
+  });
+
+  network.on('click', async (p) => {
+    if (!p.nodes.length) return;
+    const id = p.nodes[0], node = nodesDS.get(id);
+    if (!node) return;
+    if (node.type === 'tx') await showTxDetail(id);
+    else if (node.type === 'utxo') showUtxoDetail(node);
+  });
+
+  network.on('doubleClick', async (p) => {
+    if (!p.nodes.length) return;
+    const id = p.nodes[0], node = nodesDS.get(id);
+    if (!node) return;
+    const txid = node.type === 'utxo' ? id.split(':')[0] : id;
+    await traceMore(txid);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  Graph Actions
+// ═══════════════════════════════════════════
+async function doTrace() {
+  const txid = document.getElementById('txid-input').value.trim();
+  const depth = parseInt(document.getElementById('depth-input').value) || 3;
+  if (!txid) { toast('Please enter a txid'); return; }
+  if (!network) { toast('Graph library not loaded'); return; }
+  document.getElementById('graph-container').classList.remove('empty');
+  setStatus('Tracing...');
+  const data = await api('/api/trace', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({txid, depth, reset:true}),
+  });
+  if (data.error) { setStatus('Error: '+data.error); toast('Error: '+data.error, 4000); return; }
+  nodesDS.clear(); edgesDS.clear();
+  nodesDS.add(data.nodes);
+  edgesDS.add(data.edges.map((e,i) => ({...e, id:'e'+i})));
+  updateNodeCount();
+  network.fit();
+  setStatus('Traced '+data.nodes.length+' nodes');
+  toast('Graph loaded: '+data.nodes.length+' nodes');
+}
+
+async function traceMore(txid) {
+  if (!network) return;
+  const depth = parseInt(document.getElementById('depth-input').value) || 3;
+  setStatus('Expanding '+shortTx(txid)+'...');
+  const data = await api('/api/trace', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({txid, depth, reset:false}),
+  });
+  if (data.error) { setStatus(data.error); return; }
+  for (const n of data.nodes) { if (!nodesDS.get(n.id)) nodesDS.add(n); }
+  let idx = edgesDS.length;
+  for (const e of data.edges) {
+    if (!edgesDS.get().find(x => x.from===e.from && x.to===e.to))
+      edgesDS.add({...e, id:'e'+(idx++)});
+  }
+  updateNodeCount();
+  setStatus(nodesDS.length+' nodes');
+  toast('Expanded: '+nodesDS.length+' nodes');
+}
+
+function clearGraph() {
+  if (nodesDS) { nodesDS.clear(); edgesDS.clear(); }
+  document.getElementById('graph-container').classList.add('empty');
+  document.getElementById('detail-panel').innerHTML =
+    '<div style="color:var(--muted);text-align:center;padding:40px 0">Click a node to inspect it</div>';
+  document.getElementById('fingerprint-panel').innerHTML =
+    '<div style="color:var(--muted);text-align:center;padding:40px 0">Select a transaction to see fingerprints</div>';
+  updateNodeCount();
+  setStatus('Cleared');
+}
+
+// ═══════════════════════════════════════════
+//  Detail Panel
+// ═══════════════════════════════════════════
+async function showTxDetail(txid) {
+  setStatus('Loading tx...');
+  const tx = await api('/api/tx/'+txid);
+  if (tx.error) { setStatus(tx.error); return; }
+
+  const dp = document.getElementById('detail-panel');
+  let h = '';
+  h += kv('TXID', '<span style="font-size:.72rem">'+esc(txid)+'</span>');
+  h += kv('Size', tx.vsize+' vB ('+tx.weight+' WU)');
+  h += kv('Fee', tx.fee_btc+' BTC'+(tx.fee_rate_sat_vb!=null?' ('+tx.fee_rate_sat_vb+' sat/vB)':''));
+  h += kv('Confirmations', tx.confirmations);
+  h += kv('Version', tx.version);
+  h += kv('Locktime', tx.locktime);
+  if (tx.label) h += kv('Label', '<span style="color:var(--green)">'+esc(tx.label)+'</span>');
+  h += '<div style="margin:8px 0"><button class="btn-sm btn-primary" onclick="openLabelFor(\'tx\',\''+txid+'\')">&#9998; Label this transaction</button></div>';
+
+  h += '<h3 style="font-size:.84rem;color:var(--cyan);margin:12px 0 6px">INPUTS ('+tx.inputs.length+')</h3>';
+  for (const inp of tx.inputs) {
+    if (inp.type==='coinbase') { h += '<div class="item">'+badge('coinbase')+' Block Reward (coinbase)</div>'; continue; }
+    h += '<div class="item" onclick="document.getElementById(\'txid-input\').value=\''+inp.txid+'\'">'
+      + badge(inp.script_type)+' <span class="val">'+inp.value+' BTC</span>'
+      + ' <span style="font-size:.72rem;color:var(--muted)">('+inp.input_vsize+' vB to spend)</span>'
+      + '<div class="mono">'+esc(inp.address)+'</div>'
+      + (inp.label ? '<div class="lbl">&#127991; '+esc(inp.label)+'</div>' : '')
+      + '</div>';
+  }
+
+  h += '<h3 style="font-size:.84rem;color:var(--cyan);margin:12px 0 6px">OUTPUTS ('+tx.outputs.length+')</h3>';
+  for (const out of tx.outputs) {
+    const op = txid+':'+out.n;
+    h += '<div class="item">'
+      + badge(out.script_type)+' <span class="val">'+out.value+' BTC</span>'
+      + ' <span style="font-size:.72rem;color:var(--muted)">#'+out.n+'</span>'
+      + '<div class="mono">'+esc(out.address)+'</div>'
+      + (out.label ? '<div class="lbl">&#127991; '+esc(out.label)+'</div>' : '')
+      + '<button class="btn-sm" style="margin-top:4px" onclick="openLabelFor(\'output\',\''+op+'\')">&#9998; Label</button>'
+      + '</div>';
+  }
+  dp.innerHTML = h;
+
+  // Fingerprints
+  const fp = document.getElementById('fingerprint-panel');
+  if (tx.fingerprints && tx.fingerprints.length) {
+    fp.innerHTML = tx.fingerprints.map(f => '<div class="hint">'+esc(f)+'</div>').join('');
+  } else {
+    fp.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">No fingerprints detected</div>';
+  }
+  setStatus('Showing '+shortTx(txid));
+}
+
+function showUtxoDetail(node) {
+  const dp = document.getElementById('detail-panel');
+  let h = '';
+  h += kv('Outpoint', '<span style="font-size:.72rem">'+esc(node.id)+'</span>');
+  h += kv('Value', node.value+' BTC');
+  h += kv('Address', '<span style="font-size:.72rem">'+esc(node.address||'n/a')+'</span>');
+  h += kv('Script', badge(node.script_type));
+  h += '<div style="margin:8px 0"><button class="btn-sm btn-primary" onclick="openLabelFor(\'output\',\''+node.id+'\')">&#9998; Label this output</button></div>';
+  dp.innerHTML = h;
+  document.getElementById('fingerprint-panel').innerHTML =
+    '<div style="color:var(--muted);padding:20px;text-align:center">Select a transaction node (circle) for fingerprints</div>';
+}
+
+// ═══════════════════════════════════════════
+//  UTXOs
+// ═══════════════════════════════════════════
+async function loadUTXOs() {
+  setStatus('Loading UTXOs...');
+  const coins = await api('/api/utxos');
+  if (coins.error) { setStatus(coins.error); toast(coins.error,3000); return; }
+  const el = document.getElementById('utxo-list');
+  if (!coins.length) { el.innerHTML='<div style="color:var(--muted);text-align:center;padding:20px">No UTXOs found</div>'; return; }
+  let h = '';
+  for (const c of coins) {
+    const op = c.txid + ':' + c.vout;
+    const sp = c.spendability || {};
+    const canSpend = sp.can_spend !== false;
+    const isFrozen = sp.frozen === true;
+    const reason = sp.reason || '✅ Spendable';
+    
+    // Spendability indicator
+    let spendIcon = '✅';
+    let spendClass = 'color:var(--green)';
+    if (isFrozen) {
+      spendIcon = '❄️';
+      spendClass = 'color:var(--cyan)';
+    } else if (!canSpend) {
+      spendIcon = '🔒';
+      spendClass = 'color:var(--muted)';
+    }
+    
+    h += '<div class="item" style="'+(isFrozen ? 'opacity:0.7;border-left:3px solid var(--cyan);' : '')+'">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<div>'
+      + badge(c.script_type)+' <span class="val">'+c.amount+' BTC</span>'
+      + ' <span style="font-size:.72rem;color:var(--muted)">('+c.confirmations+' conf)</span>'
+      + '</div>'
+      + '<span style="'+spendClass+';font-size:.9rem" title="'+esc(reason)+'">'+spendIcon+'</span>'
+      + '</div>'
+      + '<div class="mono" style="cursor:pointer" onclick="document.getElementById(\'txid-input\').value=\''+c.txid+'\';doTrace()">'+(c.address||op)+'</div>'
+      + '<div style="font-size:.72rem;color:var(--muted);margin-top:4px" title="Spendability status">'+esc(reason)+'</div>'
+      + (c.label ? '<div class="lbl">&#127991; '+esc(c.label)+'</div>' : '')
+      + '<div style="margin-top:6px;display:flex;gap:6px">'
+      + '<button class="btn-sm" onclick="document.getElementById(\'txid-input\').value=\''+c.txid+'\';doTrace()">&#128269; Trace</button>'
+      + '<button class="btn-sm" onclick="openLabelFor(\'output\',\''+op+'\')">&#9998; Label</button>'
+      + (isFrozen 
+        ? '<button class="btn-sm" style="border-color:var(--green);color:var(--green)" onclick="unfreezeOutput(\''+op+'\')">&#9728; Unfreeze</button>'
+        : '<button class="btn-sm" style="border-color:var(--cyan);color:var(--cyan)" onclick="freezeOutput(\''+op+'\')">&#10052; Freeze</button>')
+      + '</div>'
+      + '</div>';
+  }
+  el.innerHTML = h;
+  setStatus(coins.length+' UTXOs');
+  toast(coins.length+' UTXOs loaded');
+}
+
+async function freezeOutput(op) {
+  await api('/api/labels', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify({type:'output', ref:op, label:'Frozen (privacy preservation)', spendable:false})
+  });
+  refreshLabels();
+  loadUTXOs();
+  toast('Output frozen: ' + op.slice(0,10) + '...');
+}
+
+async function unfreezeOutput(op) {
+  // Update label with spendable:true (or just remove the frozen status)
+  await api('/api/labels', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify({type:'output', ref:op, spendable:true})
+  });
+  refreshLabels();
+  loadUTXOs();
+  toast('Output unfrozen');
+}
+
+// ═══════════════════════════════════════════
+//  Labels (BIP-329)
+// ═══════════════════════════════════════════
+function showLabelModal(isEdit = false, isNewEntry = false) { 
+  document.getElementById('label-modal').style.display='flex'; 
+  document.getElementById('modal-title').textContent = isEdit ? '✏️ Edit Label (BIP-329)' : '🏷️ Add Label (BIP-329)';
+  document.getElementById('save-btn').textContent = isEdit ? 'Update Label' : 'Save Label';
+  
+  // Allow editing reference only for brand new labels (not from clicking existing item)
+  const refInput = document.getElementById('lbl-ref');
+  refInput.readOnly = !isNewEntry;
+  document.getElementById('ref-hint').style.display = isNewEntry ? 'none' : 'block';
+  
+  toggleSpendableField();
+}
+function closeLabelModal() { document.getElementById('label-modal').style.display='none'; }
+
+function toggleSpendableField() {
+  const type = document.getElementById('lbl-type').value;
+  document.getElementById('spendable-field').style.display = type === 'output' ? 'block' : 'none';
+}
+
+// Open modal for brand new label (from "+ Add Label" button)
+function openNewLabelModal() {
+  document.getElementById('lbl-type').value = 'tx';
+  document.getElementById('lbl-ref').value = '';
+  document.getElementById('lbl-text').value = '';
+  document.getElementById('lbl-origin').value = '';
+  document.getElementById('lbl-spendable').checked = true;
+  showLabelModal(false, true); // isEdit=false, isNewEntry=true
+  setTimeout(() => document.getElementById('lbl-ref').focus(), 100);
+}
+
+async function openLabelFor(type, ref) {
+  document.getElementById('lbl-type').value = type;
+  document.getElementById('lbl-ref').value = ref;
+  
+  // Check if label already exists - if so, load it for editing
+  const existing = await api('/api/labels/' + encodeURIComponent(ref));
+  const isEdit = existing && !existing.error;
+  
+  if (isEdit) {
+    // Populate with existing values
+    document.getElementById('lbl-text').value = existing.label || '';
+    document.getElementById('lbl-origin').value = existing.origin || '';
+    document.getElementById('lbl-spendable').checked = existing.spendable !== false;
+    document.getElementById('lbl-type').value = existing.type || type;
+  } else {
+    // Clear for new label
+    document.getElementById('lbl-text').value = '';
+    document.getElementById('lbl-origin').value = '';
+    document.getElementById('lbl-spendable').checked = true;
+  }
+  
+  toggleSpendableField();
+  showLabelModal(isEdit, false); // isNewEntry=false (ref is pre-filled)
+  setTimeout(() => document.getElementById('lbl-text').focus(), 100);
+}
+
+async function saveLabel() {
+  const type = document.getElementById('lbl-type').value;
+  const ref = document.getElementById('lbl-ref').value.trim();
+  
+  if (!ref) { toast('Reference is required'); return; }
+  
+  const body = {
+    type:   type,
+    ref:    ref,
+    label:  document.getElementById('lbl-text').value,
+    origin: document.getElementById('lbl-origin').value,
+  };
+  // Add spendable field for outputs
+  if (type === 'output') {
+    body.spendable = document.getElementById('lbl-spendable').checked;
+  }
+  
+  const result = await api('/api/labels', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  closeLabelModal();
+  refreshLabels();
+  loadUTXOs(); // Refresh UTXOs to show updated spendability
+  
+  // Show appropriate message
+  if (result.action === 'updated') {
+    toast('Label updated!');
+  } else {
+    toast('Label created!');
+  }
+}
+
+async function refreshLabels() {
+  const labels = await api('/api/labels');
+  const el = document.getElementById('labels-list');
+  if (!labels || !labels.length) {
+    el.innerHTML='<div style="color:var(--muted);text-align:center;padding:20px">No labels yet</div>';
+    return;
+  }
+  let h = '';
+  for (const l of labels) {
+    const short = l.ref.length > 36 ? l.ref.slice(0,14)+'...'+l.ref.slice(-10) : l.ref;
+    const isFrozen = l.type === 'output' && l.spendable === false;
+    const frozenBadge = isFrozen ? '<span style="color:var(--cyan);margin-right:4px" title="Frozen output">❄️</span>' : '';
+    const origin = l.origin ? '<span style="font-size:.68rem;color:var(--purple)" title="Origin: '+esc(l.origin)+'">📍</span>' : '';
+    
+    h += '<div class="label-row" style="'+(isFrozen ? 'background:rgba(86,212,221,0.05);' : '')+'">'
+      + '<span class="badge" style="background:var(--card);color:var(--muted);margin-right:6px;font-size:.68rem">'+esc(l.type)+'</span>'
+      + frozenBadge
+      + '<span class="ref" title="'+esc(l.ref)+'">'+esc(short)+'</span>'
+      + '<span class="ltext">'+esc(l.label || '(no label)')+'</span>'
+      + origin
+      + '<button class="btn-sm" onclick="openLabelFor(\''+esc(l.type)+'\',\''+esc(l.ref)+'\')">&#9998;</button>'
+      + '<button class="btn-sm btn-danger" onclick="deleteLabel(\''+encodeURIComponent(l.ref)+'\')">&#10005;</button>'
+      + '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function deleteLabel(ref) {
+  await api('/api/labels/'+ref, {method:'DELETE'});
+  refreshLabels();
+  toast('Label deleted');
+}
+
+function exportLabels() { window.open('/api/labels/export','_blank'); toast('Downloading labels...'); }
+
+async function importLabels(input) {
+  const file = input.files[0]; if(!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  const res = await api('/api/labels/import', {method:'POST', body:fd});
+  toast('Imported '+(res.imported||0)+' labels');
+  refreshLabels();
+  input.value = '';
+}
+
+// ═══════════════════════════════════════════
+//  Wallet
+// ═══════════════════════════════════════════
+async function loadWallets() {
+  const ws = await api('/api/wallets');
+  if (ws.error || !Array.isArray(ws)) return;
+  const sel = document.getElementById('wallet-select');
+  sel.innerHTML = '';
+  for (const w of ws) { const o=document.createElement('option'); o.value=w; o.textContent=w; sel.appendChild(o); }
+}
+
+async function switchWallet() {
+  const name = document.getElementById('wallet-select').value;
+  await api('/api/wallets/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({wallet:name})});
+  clearGraph();
+  toast('Switched to wallet: '+name);
+}
+
+async function loadBalance() {
+  const b = await api('/api/balance');
+  const bp = document.getElementById('balance-panel');
+  if (b && b.mine) {
+    bp.innerHTML = '<span style="font-size:1.3rem;color:var(--green);font-weight:700">'+b.mine.trusted+' BTC</span>'
+      + '<span style="margin-left:16px;font-size:.85rem;color:var(--muted)">Pending: '+b.mine.untrusted_pending+' BTC</span>'
+      + '<span style="margin-left:16px;font-size:.85rem;color:var(--muted)">Immature: '+(b.mine.immature||0)+' BTC</span>';
+  } else {
+    bp.textContent = b.error || 'Could not load balance';
+  }
+}
+
+// ═══════════════════════════════════════════
+//  Keyboard
+// ═══════════════════════════════════════════
+document.getElementById('txid-input').addEventListener('keydown', e => { if(e.key==='Enter') doTrace(); });
+
+// ═══════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════
+initNetwork();
+refreshLabels();
+loadBalance();
+loadWallets();
+</script>
+</body>
+</html>

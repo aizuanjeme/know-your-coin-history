@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Bitcoin Core data (keep config, ignore chain data)
+datadir/node0/regtest/
+!datadir/node0/bitcoin.conf
+
+# Local labels (user-specific)
+labels.jsonl
+
+# Logs
+*.log
