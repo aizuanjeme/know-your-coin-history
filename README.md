@@ -84,6 +84,24 @@ curl -X POST http://127.0.0.1:5000/api/trace \
 | [CREDENTIALS.md](docs/CREDENTIALS.md) | How RPC credentials were chosen |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and data flow |
 | [EXPLAINED.md](docs/EXPLAINED.md) | Simple explanation (ELI5) |
+| [TESTING.md](docs/TESTING.md) | Testing methodology & coverage |
+
+## Testing
+
+Run the test suite to verify functionality:
+
+```bash
+# Run all tests (140 tests, ~1 second)
+python -m pytest tests/ -v
+
+# Run with coverage (87% coverage on core modules)
+python -m pytest tests/ --cov=coin_history --cov-report=term
+
+# Run only unit tests (no RPC needed)
+python -m pytest tests/ -m unit
+```
+
+See [docs/TESTING.md](docs/TESTING.md) for full testing methodology.
 
 ## Configuration
 
